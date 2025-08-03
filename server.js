@@ -30,6 +30,7 @@ mongoose.connect(process.env.MONGODB_URL, {
 .catch(err => console.error('MongoDB connection error:', err));
 
 // Routes
+app.get('/', (req, res) => res.send('Welcome'));
 app.use('/api', userRoutes);
 app.use('/api', paymentRoutes);
 app.use('/api', loanRoutes);
