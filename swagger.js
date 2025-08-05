@@ -6,7 +6,7 @@ const swaggerOptions = {
   definition: {
     openapi: '3.0.0',
     info: {
-      title: 'Kerala Chitti API',
+      title: 'Collectin App',
       version: '1.0.0',
       description: 'API documentation for Kerala Chitti application',
       contact: {
