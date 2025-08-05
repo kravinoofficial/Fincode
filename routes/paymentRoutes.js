@@ -3,7 +3,51 @@ const router = express.Router();
 const User = require('../models/User');
 const { authenticate, isAdmin } = require('../utils/auth');
 
-// Mark Payment (Admin Only)
+/**
+ * @swagger
+ * tags:
+ *   name: Payments
+ *   description: Payment management endpoints
+ */
+
+/**
+ * @swagger
+ * /api/payments/mark:
+ *   post:
+ *     summary: Mark payment as paid/unpaid (Admin only)
+ *     tags: [Payments]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - targetUserId
+ *               - month
+ *               - paid
+ *             properties:
+ *               targetUserId:
+ *                 type: string
+ *                 description: ID of the user
+ *               month:
+ *                 type: string
+ *                 description: Payment month in YYYY-MM format
+ *               paid:
+ *                 type: boolean
+ *                 description: Payment status
+ *     responses:
+ *       200:
+ *         description: Payment status updated successfully
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Admin access required
+ *       404:
+ *         description: User not found
+ */
 router.post('/payments/mark', authenticate, isAdmin, async (req, res) => {
   const { targetUserId, month, paid } = req.body;
   const user = await User.findById(targetUserId);

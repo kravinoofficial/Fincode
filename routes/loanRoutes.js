@@ -3,7 +3,47 @@ const router = express.Router();
 const User = require('../models/User');
 const { authenticate, isAdmin } = require('../utils/auth');
 
-// Add Loan for User (Admin only)
+/**
+ * @swagger
+ * tags:
+ *   name: Loans
+ *   description: Loan management endpoints
+ */
+
+/**
+ * @swagger
+ * /api/loans:
+ *   post:
+ *     summary: Create a new loan for a user (Admin only)
+ *     tags: [Loans]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - targetUserId
+ *               - amount
+ *             properties:
+ *               targetUserId:
+ *                 type: string
+ *                 description: ID of the user to create loan for
+ *               amount:
+ *                 type: number
+ *                 description: Loan amount
+ *     responses:
+ *       200:
+ *         description: Loan created successfully
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Admin access required
+ *       404:
+ *         description: User not found
+ */
 router.post('/loans', authenticate, isAdmin, async (req, res) => {
   const { targetUserId, amount } = req.body;
   const user = await User.findById(targetUserId);
@@ -27,7 +67,44 @@ router.post('/loans', authenticate, isAdmin, async (req, res) => {
   res.json({ message: 'Loan added successfully' });
 });
 
-// Mark Loan Status (Admin only)
+/**
+ * @swagger
+ * /api/loans/mark:
+ *   post:
+ *     summary: Mark loan as paid/unpaid (Admin only)
+ *     tags: [Loans]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - targetUserId
+ *               - loanId
+ *               - paid
+ *             properties:
+ *               targetUserId:
+ *                 type: string
+ *                 description: ID of the user
+ *               loanId:
+ *                 type: string
+ *                 description: ID of the loan
+ *               paid:
+ *                 type: boolean
+ *                 description: Paid status
+ *     responses:
+ *       200:
+ *         description: Loan status updated successfully
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Admin access required
+ *       404:
+ *         description: User or loan not found
+ */
 router.post('/loans/mark', authenticate, isAdmin, async (req, res) => {
   const { targetUserId, loanId, paid } = req.body;
   const user = await User.findById(targetUserId);
@@ -48,7 +125,58 @@ router.post('/loans/mark', authenticate, isAdmin, async (req, res) => {
   res.json({ message: 'Loan status updated' });
 });
 
-// View All Loan Data (Admin and User)
+/**
+ * @swagger
+ * /api/loans:
+ *   get:
+ *     summary: Get loans (Admin can get any user's loans, regular users can only get their own)
+ *     tags: [Loans]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: targetUserId
+ *         schema:
+ *           type: string
+ *         description: User ID (admin only)
+ *     responses:
+ *       200:
+ *         description: List of loans
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 loans:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       _id:
+ *                         type: string
+ *                       amount:
+ *                         type: number
+ *                       interestRate:
+ *                         type: number
+ *                       takenDate:
+ *                         type: string
+ *                         format: date
+ *                       paid:
+ *                         type: boolean
+ *                       paidDate:
+ *                         type: string
+ *                         format: date
+ *                       interestAccrued:
+ *                         type: number
+ *                       totalAmountToPay:
+ *                         type: number
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Access denied
+ *       404:
+ *         description: User not found
+ */
 router.get('/loans', authenticate, async (req, res) => {
   try {
     const userId = req.user._id;

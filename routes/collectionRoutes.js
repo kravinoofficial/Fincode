@@ -4,7 +4,41 @@ const User = require('../models/User');
 const { authenticate } = require('../utils/auth');
 const { getCurrentMonth } = require('../utils/helpers');
 
-// Get Total Collection, Paid Interest, and Total Balance (Admin and User)
+/**
+ * @swagger
+ * tags:
+ *   name: Collections
+ *   description: Collection management endpoints
+ */
+
+/**
+ * @swagger
+ * /api/collection:
+ *   get:
+ *     summary: Get total collection, paid interest, and total balance
+ *     tags: [Collections]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Collection summary
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 totalCollection:
+ *                   type: number
+ *                   description: Total amount collected from payments
+ *                 paidInterest:
+ *                   type: number
+ *                   description: Total interest paid from loans
+ *                 totalBalance:
+ *                   type: number
+ *                   description: Total balance (collection + interest)
+ *       401:
+ *         description: Unauthorized
+ */
 router.get('/collection', authenticate, async (req, res) => {
   const users = await User.find({ role: 'user' });
   

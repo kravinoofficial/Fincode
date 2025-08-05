@@ -8,6 +8,7 @@ const paymentRoutes = require('./routes/paymentRoutes');
 const loanRoutes = require('./routes/loanRoutes');
 const collectionRoutes = require('./routes/collectionRoutes');
 const { initializeAdmin } = require('./utils/adminSetup');
+const swaggerDocs = require('./swagger');
 
 dotenv.config();
 
@@ -35,6 +36,9 @@ app.use('/api', userRoutes);
 app.use('/api', paymentRoutes);
 app.use('/api', loanRoutes);
 app.use('/api', collectionRoutes);
+
+// Swagger Documentation
+swaggerDocs(app);
 
 // Start Server
 app.listen(port, () => {
