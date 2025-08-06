@@ -6,6 +6,7 @@ const dotenv = require('dotenv');
 const userRoutes = require('./routes/userRoutes');
 const paymentRoutes = require('./routes/paymentRoutes');
 const loanRoutes = require('./routes/loanRoutes');
+const expenseRoutes = require('./routes/expenseRoutes');
 const collectionRoutes = require('./routes/collectionRoutes');
 const { initializeAdmin } = require('./utils/adminSetup');
 const swaggerDocs = require('./swagger');
@@ -34,8 +35,10 @@ mongoose.connect(process.env.MONGODB_URL, {
 app.get('/', (req, res) => res.send('Welcome'));
 app.use('/api', userRoutes);
 app.use('/api', paymentRoutes);
+app.use('/api', expenseRoutes);
 app.use('/api', loanRoutes);
-app.use('/api', collectionRoutes);
+app.use('/api', collectionRoutes);  
+
 
 // Swagger Documentation
 swaggerDocs(app);
