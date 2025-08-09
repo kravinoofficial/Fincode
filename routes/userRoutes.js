@@ -180,7 +180,7 @@ router.post('/users', authenticate, isAdmin, async (req, res) => {
  *         description: Unauthorized
  */
 router.get('/users', authenticate, async (req, res) => {
-  const users = await User.find({}, '-numberpass');
+ const users = await User.find({ role: { $ne: 'admin' } }, '-numberpass');
   res.json(users);
 });
 

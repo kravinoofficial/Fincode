@@ -4,6 +4,14 @@ const User = require('../models/User');
 const { authenticate } = require('../utils/auth');
 const { getCurrentMonth } = require('../utils/helpers');
 
+// Helper function to calculate the number of months between two dates
+const calculateMonthsDifference = (startMonth, endMonth) => {
+  const startDate = new Date(startMonth + '-01'); // First day of the start month
+  const endDate = new Date(endMonth + '-01'); // First day of the end month
+  const monthsDiff = (endDate.getFullYear() - startDate.getFullYear()) * 12 + (endDate.getMonth() - startDate.getMonth());
+  return monthsDiff + 1; // Including the current month
+};
+
 /**
  * @swagger
  * tags:
@@ -15,13 +23,13 @@ const { getCurrentMonth } = require('../utils/helpers');
  * @swagger
  * /api/collection:
  *   get:
- *     summary: Get total collection, paid interest, and total balance
+ *     summary: Get total collection, paid interest, total balance, and total months of collection from August 2025 to current month
  *     tags: [Collections]
  *     security:
  *       - bearerAuth: []
  *     responses:
  *       200:
- *         description: Collection summary
+ *         description: Collection summary, including total months from August 2025 to current month
  *         content:
  *           application/json:
  *             schema:
@@ -36,12 +44,15 @@ const { getCurrentMonth } = require('../utils/helpers');
  *                 totalBalance:
  *                   type: number
  *                   description: Total balance (collection + interest)
+ *                 totalMonthsOfCollection:
+ *                   type: number
+ *                   description: Total number of months of payment collection from August 2025 to the current month
  *       401:
  *         description: Unauthorized
  */
 router.get('/collection', authenticate, async (req, res) => {
   const users = await User.find({ role: 'user' });
-  
+
   // Calculate Total Collection (include all paid payments for the current month)
   const totalCollection = users.reduce((sum, user) => {
     const paidThisMonth = user.payments.find(p => 
@@ -68,7 +79,21 @@ router.get('/collection', authenticate, async (req, res) => {
   // Calculate Total Balance
   const totalBalance = totalCollection + paidInterest;
 
-  res.json({ totalCollection, paidInterest, totalBalance });
+  // Calculate total months from August 2025 to current month
+  const startMonth = "2025-08"; // Starting month (August 2025)
+  const currentMonth = new Date(); // Get current date
+  const currentMonthStr = currentMonth.toISOString().slice(0, 7); // Current month in YYYY-MM format
+
+  // Calculate the total number of months from August 2025 to current month
+  const totalMonthsOfCollection = calculateMonthsDifference(startMonth, currentMonthStr);
+
+  // Return the result
+  res.json({
+    totalCollection,
+    paidInterest,
+    totalBalance,
+    totalMonthsOfCollection
+  });
 });
 
 module.exports = router;
