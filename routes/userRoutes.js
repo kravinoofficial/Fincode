@@ -183,5 +183,137 @@ router.get('/users', authenticate, async (req, res) => {
  const users = await User.find({ role: { $ne: 'admin' } }, '-numberpass');
   res.json(users);
 });
+/**
+ * @swagger
+ * /api/users/{id}:
+ *   get:
+ *     summary: Get a user by ID
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         description: The user ID
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: User found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 _id:
+ *                   type: string
+ *                 name:
+ *                   type: string
+ *                 number:
+ *                   type: string
+ *                 address:
+ *                   type: string
+ *                 monthlyAmount:
+ *                   type: number
+ *                 role:
+ *                   type: string
+ *       404:
+ *         description: User not found
+ *       401:
+ *         description: Unauthorized
+ */
+router.get('/users/:id', authenticate, async (req, res) => {
+  const user = await User.findById(req.params.id, '-numberpass');
+  if (!user) {
+    return res.status(404).json({ message: 'User not found' });
+  }
+  res.json(user);
+});
+/**
+ * @swagger
+ * /api/users/by-date:
+ *   get:
+ *     summary: Get all users by a date range
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: startDate
+ *         required: true
+ *         description: The start date in YYYY-MM-DD format
+ *         schema:
+ *           type: string
+ *           format: date
+ *       - in: query
+ *         name: endDate
+ *         required: true
+ *         description: The end date in YYYY-MM-DD format
+ *         schema:
+ *           type: string
+ *           format: date
+ *     responses:
+ *       200:
+ *         description: List of users within the date range
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   _id:
+ *                     type: string
+ *                   name:
+ *                     type: string
+ *                   number:
+ *                     type: string
+ *                   address:
+ *                     type: string
+ *                   monthlyAmount:
+ *                     type: number
+ *                   role:
+ *                     type: string
+ *       400:
+ *         description: Invalid date range
+ *       401:
+ *         description: Unauthorized
+ */
+router.get('/users/by-date', authenticate, async (req, res) => {
+  const { startDate, endDate } = req.query;
+  
+  // Ensure both dates are provided and valid
+  if (!startDate || !endDate) {
+    return res.status(400).json({ message: 'Both startDate and endDate are required' });
+  }
+
+  try {
+    // Convert strings to Date objects
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    
+    // Check if dates are valid
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+      return res.status(400).json({ message: 'Invalid date format' });
+    }
+
+    // Find users within the date range (assuming you have a createdAt field or similar)
+    const users = await User.find({
+      createdAt: { $gte: start, $lte: end },
+      role: { $ne: 'admin' }
+    }, '-numberpass');
+    
+    // If no users found, return 404
+    if (!users.length) {
+      return res.status(404).json({ message: 'No users found for the given date range' });
+    }
+    
+    res.json(users);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 
 module.exports = router;
