@@ -8,7 +8,7 @@ const swaggerOptions = {
     info: {
       title: 'Collectin App',
       version: '1.0.0',
-      description: 'API documentation for Kerala Chitti application',
+      description: 'API documentation for Collection application',
       contact: {
         name: 'API Support',
         email: 'support@example.com'
@@ -16,7 +16,7 @@ const swaggerOptions = {
     },
     servers: [
       {
-        url: 'https://nexacore-lkds.onrender.com',
+        url: 'http://localhost:3000',
         description: 'Deployed server',
       },
     ],

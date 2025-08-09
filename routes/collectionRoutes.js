@@ -53,18 +53,26 @@ const calculateMonthsDifference = (startMonth, endMonth) => {
 router.get('/collection', authenticate, async (req, res) => {
   const users = await User.find({ role: 'user' });
 
-  // Calculate Total Collection (include all paid payments for the current month)
-  const totalCollection = users.reduce((sum, user) => {
-    const paidThisMonth = user.payments.find(p => 
-      p.month === getCurrentMonth() && 
-      p.paid && 
-      p.paidDate
-    );
-    return sum + (paidThisMonth ? user.monthlyAmount : 0);
+// Calculate Total Collection (include all paid payments from all months)
+const collectionDb = users.reduce((sum, user) => {
+  // Iterate through each payment and add the monthlyAmount for paid payments
+  const totalUserCollection = user.payments.reduce((paymentSum, payment) => {
+    if (payment.paid && payment.paidDate) {
+      return paymentSum + user.monthlyAmount;
+    }
+    return paymentSum;
   }, 0);
 
+  return sum + totalUserCollection;
+}, 0);
+
+const totalCollection = collectionDb + 203650;
+
+
+
+
   // Calculate Paid Interest from loans that are marked as paid
-  const paidInterest = users.reduce((sum, user) => {
+  const interestDb = users.reduce((sum, user) => {
     const paidLoans = user.loans.filter(loan => loan.paid);
     const interest = paidLoans.reduce((loanSum, loan) => {
       const takenDate = new Date(loan.takenDate);
@@ -73,11 +81,14 @@ router.get('/collection', authenticate, async (req, res) => {
       const interestAmount = loan.amount * 0.05 * (monthsDiff > 0 ? monthsDiff : 1); // Minimum 1 month if paid same month
       return loanSum + interestAmount;
     }, 0);
-    return sum + interest;
+    return sum + interest ;
   }, 0);
 
+const paidInterest = interestDb + 100348;
+
+
   // Calculate Total Balance
-  const totalBalance = totalCollection + paidInterest;
+  const totalBalance = totalCollection + paidInterest ;
 
   // Calculate total months from August 2025 to current month
   const startMonth = "2025-08"; // Starting month (August 2025)
