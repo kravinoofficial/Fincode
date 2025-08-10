@@ -316,15 +316,23 @@ router.get('/users/by-date', authenticate, async (req, res) => {
 });
 /**
  * @swagger
- * /api/users/payments/today:
+ * /api/users/payments/by-date:
  *   get:
- *     summary: Get all users' payment details for the current month (15th to next 15th), create missing payments
+ *     summary: Get all users' payment details for a specified date range (15th of the given month to 15th of the next month), create missing payments
  *     tags: [Users]
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: date
+ *         required: true
+ *         description: The date (YYYY-MM-DD) to calculate the payment period (15th to next 15th)
+ *         schema:
+ *           type: string
+ *           format: date
  *     responses:
  *       200:
- *         description: List of users with payment details for the current month range (15th to next 15th), creates missing payments
+ *         description: List of users with payment details for the given month range (15th to next 15th), creates missing payments
  *         content:
  *           application/json:
  *             schema:
@@ -354,14 +362,24 @@ router.get('/users/by-date', authenticate, async (req, res) => {
  *       404:
  *         description: No users found for the given month range
  */
-router.get('/users/payments/today', authenticate, async (req, res) => {
-  try {
-    // Get today's date
-    const today = new Date();
+router.get('/users/payments/by-date', authenticate, async (req, res) => {
+  const { date } = req.query; // Accept date parameter in YYYY-MM-DD format
 
-    // Determine the current period: 15th of the current month to 15th of the next month
-    const currentMonthStart = new Date(today.getFullYear(), today.getMonth(), 15); // 15th of the current month
-    const nextMonthStart = new Date(today.getFullYear(), today.getMonth() + 1, 15); // 15th of the next month
+  if (!date) {
+    return res.status(400).json({ message: 'Date parameter is required' });
+  }
+
+  try {
+    // Parse the provided date
+    const providedDate = new Date(date);
+
+    if (isNaN(providedDate)) {
+      return res.status(400).json({ message: 'Invalid date format. Please use YYYY-MM-DD' });
+    }
+
+    // Determine the payment period: 15th of the given month to 15th of the next month
+    const currentMonthStart = new Date(providedDate.getFullYear(), providedDate.getMonth(), 15); // 15th of the given month
+    const nextMonthStart = new Date(providedDate.getFullYear(), providedDate.getMonth() + 1, 15); // 15th of the next month
 
     // Format dates as ISO strings for querying
     const startDate = currentMonthStart.toISOString();
@@ -405,7 +423,7 @@ router.get('/users/payments/today', authenticate, async (req, res) => {
       });
     }
 
-    // Return the updated users with their payments for the current period
+    // Return the updated users with their payments for the specified period
     res.json(updatedUsers);
   } catch (err) {
     res.status(500).json({ message: 'Server error' });
