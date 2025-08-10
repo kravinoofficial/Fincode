@@ -314,6 +314,103 @@ router.get('/users/by-date', authenticate, async (req, res) => {
     res.status(500).json({ message: 'Server error' });
   }
 });
+/**
+ * @swagger
+ * /api/users/payments/today:
+ *   get:
+ *     summary: Get all users' payment details for the current month (15th to next 15th), create missing payments
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: List of users with payment details for the current month range (15th to next 15th), creates missing payments
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   _id:
+ *                     type: string
+ *                   name:
+ *                     type: string
+ *                   number:
+ *                     type: string
+ *                   monthlyAmount:
+ *                     type: number
+ *                   payments:
+ *                     type: array
+ *                     items:
+ *                       type: object
+ *                       properties:
+ *                         month:
+ *                           type: string
+ *                         paid:
+ *                           type: boolean
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: No users found for the given month range
+ */
+router.get('/users/payments/today', authenticate, async (req, res) => {
+  try {
+    // Get today's date
+    const today = new Date();
+
+    // Determine the current period: 15th of the current month to 15th of the next month
+    const currentMonthStart = new Date(today.getFullYear(), today.getMonth(), 15); // 15th of the current month
+    const nextMonthStart = new Date(today.getFullYear(), today.getMonth() + 1, 15); // 15th of the next month
+
+    // Format dates as ISO strings for querying
+    const startDate = currentMonthStart.toISOString();
+    const endDate = nextMonthStart.toISOString();
+
+    // Fetch all users (excluding admin) and check if they have the required payment period
+    const users = await User.find({ role: { $ne: 'admin' } }, '-numberpass');
+
+    // Prepare a list to store updated users
+    const updatedUsers = [];
+
+    // Loop through each user to check their payments
+    for (let user of users) {
+      const paymentExists = user.payments.some(p => {
+        const paymentDate = new Date(p.month);
+        return paymentDate >= currentMonthStart && paymentDate < nextMonthStart;
+      });
+
+      // If payment entry for the period doesn't exist, create one
+      if (!paymentExists) {
+        // Add the missing payment entry
+        user.payments.push({
+          month: currentMonthStart.toISOString(),
+          paid: false
+        });
+
+        // Save the user after adding the new payment
+        await user.save();
+      }
+
+      // Add the updated user to the list
+      updatedUsers.push({
+        _id: user._id,
+        name: user.name,
+        number: user.number,
+        monthlyAmount: user.monthlyAmount,
+        payments: user.payments.filter(p => {
+          const paymentDate = new Date(p.month);
+          return paymentDate >= currentMonthStart && paymentDate < nextMonthStart;
+        })
+      });
+    }
+
+    // Return the updated users with their payments for the current period
+    res.json(updatedUsers);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
 
 
 module.exports = router;
