@@ -16,7 +16,7 @@ const swaggerOptions = {
     },
     servers: [
       {
-        url: 'https://nexacore-lkds.onrender.com/',
+        url: 'http://localhost:3000',
         description: 'Deployed server',
       },
     ],
