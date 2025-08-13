@@ -24,9 +24,7 @@ async function initializeAdmin() {
       }
 
       await admin.save();
-      console.log('Admin created with number: 1234567890, password: admin123');
     } else {
-      console.log('Admin already exists');
     }
   } catch (error) {
     console.error('Error initializing admin:', error.message);

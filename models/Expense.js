@@ -7,4 +7,7 @@ const expenseSchema = new mongoose.Schema({
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true }, // User who created the expense
 });
 
-module.exports = mongoose.model('Expense', expenseSchema);
+// Check if the model already exists before defining it
+const Expense = mongoose.models.Expense || mongoose.model('Expense', expenseSchema);
+
+module.exports = Expense;

@@ -3,6 +3,7 @@ const router = express.Router();
 const User = require('../models/User');
 const { authenticate } = require('../utils/auth');
 const { getCurrentMonth } = require('../utils/helpers');
+const expense = require('../models/expense');
 
 // Helper function to calculate the number of months between two dates
 const calculateMonthsDifference = (startMonth, endMonth) => {
@@ -86,9 +87,11 @@ const totalCollection = collectionDb + 203650;
 
 const paidInterest = interestDb + 100348;
 
+const expenses = await expense.find({});
+const totalExpense = expenses.reduce((sum, expense) => sum + Number(expense.amount), 0);
 
   // Calculate Total Balance
-  const totalBalance = totalCollection + paidInterest ;
+  const totalBalance = totalCollection + paidInterest - totalExpense;
 
   // Calculate total months from August 2025 to current month
   const startMonth = "2025-08"; // Starting month (August 2025)
