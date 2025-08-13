@@ -1,4 +1,4 @@
-const express = require('express');
+const express = require('Express');
 const router = express.Router();
 const Expense = require('../models/expense');
 const User = require('../models/User');
