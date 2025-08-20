@@ -33,7 +33,7 @@ async function initializeAdmin() {
 
 // Run the check every hour
 cron.schedule('0 * * * *', async () => {
-  console.log('Checking for admin user...');
+  
   await initializeAdmin();
 });
 
