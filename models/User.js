@@ -67,6 +67,34 @@ const mongoose = require('mongoose');
  *                 type: string
  *                 format: date
  *                 description: Date when loan was repaid
+ *               interestPayments:
+ *                 type: array
+ *                 description: List of interest payments for this loan
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     amount:
+ *                       type: number
+ *                       description: Interest amount paid
+ *                     paidDate:
+ *                       type: string
+ *                       format: date
+ *                       description: Date when interest was paid
+ *                     periodStart:
+ *                       type: string
+ *                       format: date
+ *                       description: Start date of interest period
+ *                     periodEnd:
+ *                       type: string
+ *                       format: date
+ *                       description: End date of interest period
+ *               loanClosed:
+ *                 type: boolean
+ *                 description: Whether the loan is fully closed (principal and all interest paid)
+ *               closedDate:
+ *                 type: string
+ *                 format: date
+ *                 description: Date when the loan was fully closed
  *         role:
  *           type: string
  *           enum: [admin, user]
@@ -93,6 +121,14 @@ const userSchema = new mongoose.Schema({
     takenDate: Date,
     paid: Boolean,
     paidDate: Date,
+    interestPayments: [{
+      amount: Number,
+      paidDate: Date,
+      periodStart: Date,
+      periodEnd: Date
+    }],
+    loanClosed: { type: Boolean, default: false },
+    closedDate: Date
   }],
   role: { type: String, enum: ['admin', 'user'], default: 'user' },
   numberpass: String, // Plain text password as per requirement
