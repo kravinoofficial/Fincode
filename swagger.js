@@ -16,7 +16,7 @@ const swaggerOptions = {
     },
     servers: [
       {
-        url: 'https://fincode-mpu2.onrender.com',
+        url: 'http://localhost:3000',
         description: 'Test server',
       },
     ],
@@ -48,7 +48,7 @@ const swaggerDocs = (app) => {
     res.send(swaggerSpec);
   });
 
-  console.log(`Swagger docs available at https://fincode-mpu2.onrender.com/api-docs`);
+  console.log(`Swagger docs available at http://localhost:3000/api-docs`);
 };
 
 module.exports = swaggerDocs;

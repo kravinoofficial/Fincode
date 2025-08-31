@@ -124,8 +124,7 @@ const userSchema = new mongoose.Schema({
     interestPayments: [{
       amount: Number,
       paidDate: Date,
-      periodStart: Date,
-      periodEnd: Date
+     
     }],
     loanClosed: { type: Boolean, default: false },
     closedDate: Date

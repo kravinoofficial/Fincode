@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin - Database Management</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: #333;
+        }
+        
+        .container {
+            background: white;
+            padding: 40px;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            text-align: center;
+            max-width: 500px;
+            width: 90%;
+        }
+        
+        .warning-icon {
+            font-size: 4rem;
+            color: #ff4757;
+            margin-bottom: 20px;
+        }
+        
+        h1 {
+            color: #2c3e50;
+            margin-bottom: 10px;
+            font-size: 2rem;
+        }
+        
+        .subtitle {
+            color: #7f8c8d;
+            margin-bottom: 30px;
+            font-size: 1.1rem;
+        }
+        
+        .info-section {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+            text-align: left;
+        }
+        
+        .info-section h3 {
+            color: #e74c3c;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .info-section ul {
+            list-style: none;
+            padding-left: 0;
+        }
+        
+        .info-section li {
+            margin-bottom: 8px;
+            padding-left: 20px;
+            position: relative;
+        }
+        
+        .info-section li::before {
+            content: "⚠️";
+            position: absolute;
+            left: 0;
+        }
+        
+        .database-info {
+            background: #e8f4f8;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            text-align: left;
+        }
+        
+        .collection-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 5px 0;
+            border-bottom: 1px solid #ddd;
+        }
+        
+        .collection-item:last-child {
+            border-bottom: none;
+        }
+        
+        .btn-container {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        
+        .btn {
+            padding: 15px 30px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .btn-danger {
+            background: linear-gradient(45deg, #ff4757, #ff3838);
+            color: white;
+        }
+        
+        .btn-danger:hover {
+            background: linear-gradient(45deg, #ff3838, #ff2f2f);
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(255, 71, 87, 0.3);
+        }
+        
+        .btn-info {
+            background: linear-gradient(45deg, #3742fa, #2f3542);
+            color: white;
+        }
+        
+        .btn-info:hover {
+            background: linear-gradient(45deg, #2f3542, #2c2c54);
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(55, 66, 250, 0.3);
+        }
+        
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+        
+        .loading {
+            display: none;
+            margin-top: 20px;
+        }
+        
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 8px;
+            display: none;
+        }
+        
+        .result.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .result.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="warning-icon">⚠️</div>
+        <h1>Database Management</h1>
+        <p class="subtitle">Administrative Tools - Use with Extreme Caution</p>
+        
+        <div class="info-section">
+            <h3>🚨 DANGER ZONE</h3>
+            <ul>
+                <li>This will permanently delete ALL data from the database</li>
+                <li>All users, expenses, payments, and loans will be removed</li>
+                <li>This action cannot be undone</li>
+                <li>Make sure you have a backup before proceeding</li>
+            </ul>
+        </div>
+        
+        <div class="database-info" id="databaseInfo">
+            <h4>📊 Current Database Status</h4>
+            <div id="collectionsList">
+                <p>Click "Refresh Database Info" to load current data...</p>
+            </div>
+        </div>
+        
+        <div class="btn-container">
+            <button class="btn btn-info" onclick="loadDatabaseInfo()">
+                📊 Refresh Database Info
+            </button>
+            <button class="btn btn-danger" onclick="confirmDelete()" id="deleteBtn">
+                🗑️ Delete All Data
+            </button>
+        </div>
+        
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>Processing request...</p>
+        </div>
+        
+        <div class="result" id="result"></div>
+    </div>
+
+    <script>
+        const API_BASE = window.location.origin + '/api';
+        
+        async function loadDatabaseInfo() {
+            const loading = document.getElementById('loading');
+            const collectionsList = document.getElementById('collectionsList');
+            
+            loading.style.display = 'block';
+            
+            try {
+                const response = await fetch(`${API_BASE}/admin/database-info`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    let html = `<div style="margin-bottom: 10px;"><strong>Total Collections: ${data.totalCollections}</strong></div>`;
+                    
+                    if (data.collections.length === 0) {
+                        html += '<p style="color: #28a745;">✅ Database is empty</p>';
+                    } else {
+                        data.collections.forEach(collection => {
+                            html += `
+                                <div class="collection-item">
+                                    <span><strong>${collection.name}</strong></span>
+                                    <span>${collection.count} documents</span>
+                                </div>
+                            `;
+                        });
+                    }
+                    
+                    collectionsList.innerHTML = html;
+                } else {
+                    collectionsList.innerHTML = `<p style="color: #dc3545;">❌ Error: ${data.message}</p>`;
+                }
+            } catch (error) {
+                collectionsList.innerHTML = `<p style="color: #dc3545;">❌ Error loading database info: ${error.message}</p>`;
+            }
+            
+            loading.style.display = 'none';
+        }
+        
+        function confirmDelete() {
+            const confirmed = confirm(
+                "⚠️ FINAL WARNING ⚠️\n\n" +
+                "This will PERMANENTLY DELETE ALL DATA from the database!\n\n" +
+                "Are you absolutely sure you want to proceed?\n\n" +
+                "Type 'DELETE ALL' in the next prompt if you're sure."
+            );
+            
+            if (confirmed) {
+                const finalConfirm = prompt(
+                    "Type 'DELETE ALL' (without quotes) to confirm this destructive action:"
+                );
+                
+                if (finalConfirm === 'DELETE ALL') {
+                    deleteAllData();
+                } else {
+                    alert("❌ Confirmation text didn't match. Operation cancelled.");
+                }
+            }
+        }
+        
+        async function deleteAllData() {
+            const loading = document.getElementById('loading');
+            const result = document.getElementById('result');
+            const deleteBtn = document.getElementById('deleteBtn');
+            
+            loading.style.display = 'block';
+            result.style.display = 'none';
+            deleteBtn.disabled = true;
+            
+            try {
+                const response = await fetch(`${API_BASE}/admin/delete-all-data`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    result.className = 'result success';
+                    result.innerHTML = `
+                        <h4>✅ Success!</h4>
+                        <p>${data.message}</p>
+                        <p><strong>Deleted Collections:</strong> ${data.deletedCollections.join(', ')}</p>
+                        <p><strong>Timestamp:</strong> ${new Date(data.timestamp).toLocaleString()}</p>
+                    `;
+                    
+                    // Refresh database info to show empty state
+                    setTimeout(() => {
+                        loadDatabaseInfo();
+                    }, 1000);
+                } else {
+                    result.className = 'result error';
+                    result.innerHTML = `
+                        <h4>❌ Error!</h4>
+                        <p>${data.message}</p>
+                        <p><strong>Details:</strong> ${data.error}</p>
+                    `;
+                }
+            } catch (error) {
+                result.className = 'result error';
+                result.innerHTML = `
+                    <h4>❌ Network Error!</h4>
+                    <p>Failed to connect to the server: ${error.message}</p>
+                `;
+            }
+            
+            loading.style.display = 'none';
+            result.style.display = 'block';
+            deleteBtn.disabled = false;
+        }
+        
+        // Load database info on page load
+        window.addEventListener('load', loadDatabaseInfo);
+    </script>
+</body>
+</html>

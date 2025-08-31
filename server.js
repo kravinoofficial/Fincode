@@ -8,6 +8,7 @@ const paymentRoutes = require('./routes/paymentRoutes');
 const loanRoutes = require('./routes/loanRoutes');
 const expenseRoutes = require('./routes/expenseRoutes');
 const collectionRoutes = require('./routes/collectionRoutes');
+const adminRoutes = require('./routes/adminRoutes');
 const { initializeAdmin } = require('./utils/adminSetup');
 const swaggerDocs = require('./swagger');
 
@@ -19,6 +20,7 @@ const port = 3000;
 // Middleware
 app.use(cors());
 app.use(bodyParser.json());
+app.use(express.static('public'));
 
 // MongoDB Connection
 mongoose.connect(process.env.MONGODB_URL, {
@@ -37,7 +39,8 @@ app.use('/api', userRoutes);
 app.use('/api', paymentRoutes);
 app.use('/api', expenseRoutes);
 app.use('/api', loanRoutes);
-app.use('/api', collectionRoutes);  
+app.use('/api', collectionRoutes);
+app.use('/api', adminRoutes);  
 
 
 // Swagger Documentation

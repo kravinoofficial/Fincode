@@ -118,33 +118,34 @@ router.post('/loans/mark', authenticate, isAdmin, async (req, res) => {
   }
   
   // Calculate current interest due before marking as paid
-  const now = new Date();
+  const today = new Date();
   let currentInterestDue = 0;
   
-  // Determine the start date for current interest calculation
-  let periodStart;
+  // Check if there's any unpaid interest
   if (loan.interestPayments.length === 0) {
-    // If no interest payments yet, start from loan taken date
-    periodStart = new Date(loan.takenDate);
+    // No interest payments made yet - calculate from loan start
+    const loanTakenDate = new Date(loan.takenDate);
+    const daysSinceLoan = Math.ceil((today - loanTakenDate) / (1000 * 60 * 60 * 24));
+    const dailyInterestRate = loan.interestRate / 30 / 100;
+    currentInterestDue = Number((loan.amount * dailyInterestRate * daysSinceLoan).toFixed(2));
   } else {
-    // Otherwise, start from the end of the last interest period
+    // Check if interest is paid up to today
     const lastPayment = loan.interestPayments[loan.interestPayments.length - 1];
-    periodStart = new Date(lastPayment.periodEnd);
+    const lastPaymentDate = new Date(lastPayment.paidDate);
+    const daysSinceLastPayment = Math.ceil((today - lastPaymentDate) / (1000 * 60 * 60 * 24));
+    
+    if (daysSinceLastPayment > 1) {
+      const dailyInterestRate = loan.interestRate / 30 / 100;
+      currentInterestDue = Number((loan.amount * dailyInterestRate * (daysSinceLastPayment - 1)).toFixed(2));
+    }
   }
-  
-  // Calculate days difference for current interest period
-  // Subtract 1 day to start interest from second day onwards
-  const daysDiff = Math.max(0, Math.ceil((now - periodStart) / (1000 * 60 * 60 * 24)) - 1);
-  
-  // Calculate current interest due (5% monthly = ~0.167% daily)
-  const dailyInterestRate = loan.interestRate / 30 / 100;
-  currentInterestDue = Number((loan.amount * dailyInterestRate * daysDiff).toFixed(2));
   
   // Check if there is any unpaid interest
   if (currentInterestDue > 0) {
     return res.status(400).json({ 
       message: 'Cannot mark loan as paid when there is unpaid interest', 
-      currentInterestDue 
+      currentInterestDue,
+      suggestion: 'Pay interest first using /loans/pay-interest endpoint'
     });
   }
   
@@ -155,81 +156,94 @@ router.post('/loans/mark', authenticate, isAdmin, async (req, res) => {
   const lastInterestPayment = loan.interestPayments.length > 0 ? 
     loan.interestPayments[loan.interestPayments.length - 1] : null;
   
-  // If loan is paid and all interest is paid, mark loan as closed
-  if (lastInterestPayment && lastInterestPayment.periodEnd >= now) {
-    loan.loanClosed = true;
-    loan.closedDate = now;
-  }
+  // Mark loan as closed since principal is paid and all interest is up to date
+  loan.loanClosed = true;
+  loan.closedDate = today;
 
   await user.save();
   res.json({ message: 'Loan principal marked as paid' });
 });
 
 /**
- * Pay interest for a loan
+ * Pay interest for a loan - calculates from last payment date to today
  */
 router.post('/loans/pay-interest', authenticate, isAdmin, async (req, res) => {
-  const { targetUserId, loanId } = req.body;
-  const user = await User.findById(targetUserId);
-  if (!user) return res.status(404).json({ message: 'User not found' });
-  const loan = user.loans.id(loanId);
-  if (!loan) return res.status(404).json({ message: 'Loan not found' });
-  
-  // Calculate interest period
-  const now = new Date();
-  const takenDate = new Date(loan.takenDate);
-  
-  // Determine the start date for this interest period
-  let periodStart;
-  if (loan.interestPayments.length === 0) {
-    // If this is the first interest payment, start from loan taken date
-    periodStart = takenDate;
-  } else {
-    // Otherwise, start from the end of the last interest period
-    const lastPayment = loan.interestPayments[loan.interestPayments.length - 1];
-    periodStart = new Date(lastPayment.periodEnd);
+  try {
+    const { targetUserId, loanId } = req.body;
+    const user = await User.findById(targetUserId);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    
+    const loan = user.loans.id(loanId);
+    if (!loan) return res.status(404).json({ message: 'Loan not found' });
+    
+    if (loan.loanClosed) {
+      return res.status(400).json({ message: 'Loan is already closed' });
+    }
+    
+    const today = new Date();
+    const loanTakenDate = new Date(loan.takenDate);
+    
+    // Determine the start date for interest calculation
+    let interestStartDate;
+    if (loan.interestPayments.length === 0) {
+      // First interest payment - start from loan taken date
+      interestStartDate = loanTakenDate;
+    } else {
+      // Subsequent payments - start from the day after last payment
+      const lastPayment = loan.interestPayments[loan.interestPayments.length - 1];
+      interestStartDate = new Date(lastPayment.paidDate);
+      interestStartDate.setDate(interestStartDate.getDate() + 1);
+    }
+    
+    // Calculate days between start date and today
+    const daysDiff = Math.ceil((today - interestStartDate) / (1000 * 60 * 60 * 24));
+    
+    if (daysDiff <= 0) {
+      return res.status(400).json({ 
+        message: 'No interest due - payment already made for this period',
+        lastPaymentDate: loan.interestPayments.length > 0 ? loan.interestPayments[loan.interestPayments.length - 1].paidDate : null
+      });
+    }
+    
+    // Calculate interest amount (5% monthly = ~0.167% daily)
+    const dailyInterestRate = loan.interestRate / 30 / 100;
+    const interestAmount = Number((loan.amount * dailyInterestRate * daysDiff).toFixed(2));
+    
+    // Add interest payment record
+    loan.interestPayments.push({
+      amount: interestAmount,
+      paidDate: today
+    });
+    
+    // Check if loan should be closed (principal paid and no pending interest)
+    if (loan.paid) {
+      loan.loanClosed = true;
+      loan.closedDate = today;
+    }
+    
+    await user.save();
+    
+    res.json({ 
+      message: 'Interest payment recorded successfully', 
+      interestAmount,
+      daysCovered: daysDiff,
+      interestPeriod: {
+        from: interestStartDate.toISOString().split('T')[0],
+        to: today.toISOString().split('T')[0]
+      },
+      loanStatus: loan.loanClosed ? 'Closed' : (loan.paid ? 'Principal Paid' : 'Active')
+    });
+  } catch (error) {
+    console.error('Error paying interest:', error);
+    res.status(500).json({ message: 'Server error' });
   }
-  
-  // End date is today
-  const periodEnd = now;
-  
-  // Calculate days difference for interest
-  // Subtract 1 day to start interest from second day onwards
-  const daysDiff = Math.max(0, Math.ceil((periodEnd - periodStart) / (1000 * 60 * 60 * 24)) - 1);
-  
-  // Calculate interest amount (5% monthly = ~0.167% daily)
-  const dailyInterestRate = loan.interestRate / 30 / 100;
-  const interestAmount = Number((loan.amount * dailyInterestRate * daysDiff).toFixed(2));
-  
-  // Add interest payment record
-  loan.interestPayments.push({
-    amount: interestAmount,
-    paidDate: now,
-    periodStart,
-    periodEnd
-  });
-  
-  // If loan principal is already paid, check if we should close the loan
-  if (loan.paid) {
-    loan.loanClosed = true;
-    loan.closedDate = now;
-  }
-  
-  await user.save();
-  res.json({ 
-    message: 'Interest payment recorded successfully', 
-    interestAmount,
-    periodStart,
-    periodEnd,
-    daysCovered: daysDiff
-  });
 });
 
 /**
  * @swagger
  * /api/loans/mark-interest:
  *   post:
- *     summary: Mark interest as paid for a specific period (Admin only)
+ *     summary: Mark interest as paid until today (Admin only)
  *     tags: [Loans]
  *     security:
  *       - bearerAuth: []
@@ -242,8 +256,6 @@ router.post('/loans/pay-interest', authenticate, isAdmin, async (req, res) => {
  *             required:
  *               - targetUserId
  *               - loanId
- *               - startDate
- *               - endDate
  *             properties:
  *               targetUserId:
  *                 type: string
@@ -251,14 +263,6 @@ router.post('/loans/pay-interest', authenticate, isAdmin, async (req, res) => {
  *               loanId:
  *                 type: string
  *                 description: ID of the loan
- *               startDate:
- *                 type: string
- *                 format: date
- *                 description: Start date of interest period (YYYY-MM-DD)
- *               endDate:
- *                 type: string
- *                 format: date
- *                 description: End date of interest period (YYYY-MM-DD)
  *     responses:
  *       200:
  *         description: Interest marked as paid successfully
@@ -271,56 +275,71 @@ router.post('/loans/pay-interest', authenticate, isAdmin, async (req, res) => {
  */
 router.post('/loans/mark-interest', authenticate, isAdmin, async (req, res) => {
   try {
-    const { targetUserId, loanId, startDate, endDate } = req.body;
+    const { targetUserId, loanId } = req.body;
     const user = await User.findById(targetUserId);
     if (!user) return res.status(404).json({ message: 'User not found' });
     
     const loan = user.loans.id(loanId);
     if (!loan) return res.status(404).json({ message: 'Loan not found' });
     
-    // Parse dates
-    const periodStart = new Date(startDate);
-    const periodEnd = new Date(endDate);
-    
-    // Validate dates
-    if (isNaN(periodStart.getTime()) || isNaN(periodEnd.getTime())) {
-      return res.status(400).json({ message: 'Invalid date format. Use YYYY-MM-DD' });
+    if (loan.loanClosed) {
+      return res.status(400).json({ message: 'Loan is already closed' });
     }
     
-    if (periodEnd < periodStart) {
-      return res.status(400).json({ message: 'End date cannot be before start date' });
+    const today = new Date();
+    const loanTakenDate = new Date(loan.takenDate);
+    
+    // Calculate interest due until today
+    let interestStartDate;
+    if (loan.interestPayments.length === 0) {
+      // First interest payment - start from loan taken date
+      interestStartDate = loanTakenDate;
+    } else {
+      // Subsequent payments - start from the day after last payment
+      const lastPayment = loan.interestPayments[loan.interestPayments.length - 1];
+      interestStartDate = new Date(lastPayment.paidDate);
+      interestStartDate.setDate(interestStartDate.getDate() + 1);
     }
     
-    // Calculate days difference for interest
-    // Subtract 1 day to start interest from second day onwards
-    const daysDiff = Math.max(0, Math.ceil((periodEnd - periodStart) / (1000 * 60 * 60 * 24)) - 1);
+    // Calculate days between start date and today
+    const daysCovered = Math.ceil((today - interestStartDate) / (1000 * 60 * 60 * 24));
+    
+    if (daysCovered <= 0) {
+      return res.status(400).json({ 
+        message: 'No interest due - payment already made for this period',
+        lastPaymentDate: loan.interestPayments.length > 0 ? loan.interestPayments[loan.interestPayments.length - 1].paidDate : null
+      });
+    }
     
     // Calculate interest amount (5% monthly = ~0.167% daily)
     const dailyInterestRate = loan.interestRate / 30 / 100;
-    const interestAmount = Number((loan.amount * dailyInterestRate * daysDiff).toFixed(2));
+    const interestAmount = Number((loan.amount * dailyInterestRate * daysCovered).toFixed(2));
+    
+    const interestPeriod = {
+      from: interestStartDate.toISOString().split('T')[0],
+      to: today.toISOString().split('T')[0]
+    };
     
     // Add interest payment record
-    const now = new Date();
     loan.interestPayments.push({
       amount: interestAmount,
-      paidDate: now,
-      periodStart,
-      periodEnd
+      paidDate: today
     });
     
-    // If loan principal is already paid, check if we should close the loan
-    if (loan.paid && periodEnd >= now) {
+    // Check if loan should be closed (principal paid and no pending interest)
+    if (loan.paid) {
       loan.loanClosed = true;
-      loan.closedDate = now;
+      loan.closedDate = today;
     }
     
     await user.save();
+    
     res.json({ 
-      message: 'Interest marked as paid successfully', 
+      message: 'Interest marked as paid until today', 
       interestAmount,
-      periodStart,
-      periodEnd,
-      daysCovered: daysDiff
+      daysCovered,
+      interestPeriod,
+      loanStatus: loan.loanClosed ? 'Closed' : (loan.paid ? 'Principal Paid' : 'Active')
     });
   } catch (error) {
     console.error('Error marking interest as paid:', error);
@@ -410,24 +429,22 @@ router.get('/loans', authenticate, async (req, res) => {
       // Calculate current interest due (if any)
       let currentInterestDue = 0;
       if (!loan.loanClosed) {
-        // Determine the start date for current interest calculation
-        let periodStart;
+        let interestStartDate;
         if (loan.interestPayments.length === 0) {
-          // If no interest payments yet, start from loan taken date
-          periodStart = new Date(loan.takenDate);
+          // No payments yet - start from loan taken date
+          interestStartDate = new Date(loan.takenDate);
         } else {
-          // Otherwise, start from the end of the last interest period
+          // Start from day after last payment
           const lastPayment = loan.interestPayments[loan.interestPayments.length - 1];
-          periodStart = new Date(lastPayment.periodEnd);
+          interestStartDate = new Date(lastPayment.paidDate);
+          interestStartDate.setDate(interestStartDate.getDate() + 1);
         }
         
-        // Calculate days difference for current interest period
-        // Subtract 1 day to start interest from second day onwards
-        const daysDiff = Math.max(0, Math.ceil((now - periodStart) / (1000 * 60 * 60 * 24)) - 1);
-        
-        // Calculate current interest due (5% monthly = ~0.167% daily)
-        const dailyInterestRate = loan.interestRate / 30 / 100;
-        currentInterestDue = Number((loan.amount * dailyInterestRate * daysDiff).toFixed(2));
+        const daysDiff = Math.ceil((now - interestStartDate) / (1000 * 60 * 60 * 24));
+        if (daysDiff > 0) {
+          const dailyInterestRate = loan.interestRate / 30 / 100;
+          currentInterestDue = Number((loan.amount * dailyInterestRate * daysDiff).toFixed(2));
+        }
       }
       
       // Calculate total amount to pay (principal + current interest due)
@@ -544,23 +561,22 @@ router.get('/loans/year', authenticate, async (req, res) => {
       // Calculate current interest due (if any)
       let currentInterestDue = 0;
       if (!loan.loanClosed) {
-        // Determine the start date for current interest calculation
-        let periodStart;
+        let interestStartDate;
         if (loan.interestPayments.length === 0) {
-          // If no interest payments yet, start from loan taken date
-          periodStart = new Date(loan.takenDate);
+          // No payments yet - start from loan taken date
+          interestStartDate = new Date(loan.takenDate);
         } else {
-          // Otherwise, start from the end of the last interest period
+          // Start from day after last payment
           const lastPayment = loan.interestPayments[loan.interestPayments.length - 1];
-          periodStart = new Date(lastPayment.periodEnd);
+          interestStartDate = new Date(lastPayment.paidDate);
+          interestStartDate.setDate(interestStartDate.getDate() + 1);
         }
         
-        // Calculate days difference for current interest period
-        const daysDiff = Math.ceil((now - periodStart) / (1000 * 60 * 60 * 24));
-        
-        // Calculate current interest due (5% monthly = ~0.167% daily)
-        const dailyInterestRate = loan.interestRate / 30 / 100;
-        currentInterestDue = Number((loan.amount * dailyInterestRate * daysDiff).toFixed(2));
+        const daysDiff = Math.ceil((now - interestStartDate) / (1000 * 60 * 60 * 24));
+        if (daysDiff > 0) {
+          const dailyInterestRate = loan.interestRate / 30 / 100;
+          currentInterestDue = Number((loan.amount * dailyInterestRate * daysDiff).toFixed(2));
+        }
       }
       
       // Calculate total amount to pay (principal + current interest due)
@@ -627,23 +643,21 @@ router.get('/loans/user-interest-history/:userId', authenticate, isAdmin, async 
       let currentInterestPeriodDays = 0;
       
       if (!loan.loanClosed) {
-        // Determine the start date for current interest calculation
-        let periodStart;
+        let interestStartDate;
         if (loan.interestPayments.length === 0) {
-          // If no interest payments yet, start from loan taken date
-          periodStart = new Date(loan.takenDate);
+          // No payments yet - start from loan taken date
+          interestStartDate = new Date(loan.takenDate);
         } else {
-          // Otherwise, start from the end of the last interest period
+          // Start from day after last payment
           const lastPayment = loan.interestPayments[loan.interestPayments.length - 1];
-          periodStart = new Date(lastPayment.periodEnd);
+          interestStartDate = new Date(lastPayment.paidDate);
+          interestStartDate.setDate(interestStartDate.getDate() + 1);
         }
         
-        currentInterestPeriodStart = periodStart;
+        currentInterestPeriodStart = interestStartDate;
         
-        // Calculate days difference for current interest period
-        // Subtract 1 day to start interest from second day onwards
-        const daysDiff = Math.max(0, Math.ceil((now - periodStart) / (1000 * 60 * 60 * 24)) - 1);
-        currentInterestPeriodDays = daysDiff;
+        const daysDiff = Math.ceil((now - interestStartDate) / (1000 * 60 * 60 * 24));
+        currentInterestPeriodDays = Math.max(0, daysDiff);
         
         // Calculate current interest due (5% monthly = ~0.167% daily)
         const dailyInterestRate = loan.interestRate / 30 / 100;
@@ -703,23 +717,21 @@ router.get('/loans/my-interest-history', authenticate, async (req, res) => {
       let currentInterestPeriodDays = 0;
       
       if (!loan.loanClosed) {
-        // Determine the start date for current interest calculation
-        let periodStart;
+        let interestStartDate;
         if (loan.interestPayments.length === 0) {
-          // If no interest payments yet, start from loan taken date
-          periodStart = new Date(loan.takenDate);
+          // No payments yet - start from loan taken date
+          interestStartDate = new Date(loan.takenDate);
         } else {
-          // Otherwise, start from the end of the last interest period
+          // Start from day after last payment
           const lastPayment = loan.interestPayments[loan.interestPayments.length - 1];
-          periodStart = new Date(lastPayment.periodEnd);
+          interestStartDate = new Date(lastPayment.paidDate);
+          interestStartDate.setDate(interestStartDate.getDate() + 1);
         }
         
-        currentInterestPeriodStart = periodStart;
+        currentInterestPeriodStart = interestStartDate;
         
-        // Calculate days difference for current interest period
-        // Subtract 1 day to start interest from second day onwards
-        const daysDiff = Math.max(0, Math.ceil((now - periodStart) / (1000 * 60 * 60 * 24)) - 1);
-        currentInterestPeriodDays = daysDiff;
+        const daysDiff = Math.ceil((now - interestStartDate) / (1000 * 60 * 60 * 24));
+        currentInterestPeriodDays = Math.max(0, daysDiff);
         
         // Calculate current interest due (5% monthly = ~0.167% daily)
         const dailyInterestRate = loan.interestRate / 30 / 100;
