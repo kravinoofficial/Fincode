@@ -182,7 +182,7 @@ router.post('/users', authenticate, isAdmin, async (req, res) => {
 router.get('/users', authenticate, async (req, res) => {
 const users = await User.find(
   { role: { $ne: 'admin' } },
-  { numberpass: 0, payments: 0 } // Exclude 'numberpass' and 'payments' fields
+  { numberpass: 0, payments: 0 ,loans: 0} // Exclude 'numberpass' and 'payments' fields
 );
 
   res.json(users);
