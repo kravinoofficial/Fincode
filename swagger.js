@@ -16,7 +16,7 @@ const swaggerOptions = {
     },
     servers: [
       {
-        url: 'https://fincode-mpu2.onrender.com',
+        url: 'http://localhost:3000',
         description: 'Test server',
       },
     ],

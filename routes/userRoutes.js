@@ -179,14 +179,56 @@ router.post('/users', authenticate, isAdmin, async (req, res) => {
  *       401:
  *         description: Unauthorized
  */
-router.get('/users', authenticate, async (req, res) => {
-const users = await User.find(
-  { role: { $ne: 'admin' } },
-  { numberpass: 0, payments: 0 ,loans: 0} // Exclude 'numberpass' and 'payments' fields
-);
+router.get('/users', async (req, res) => {
+  const users = await User.find(
+    { role: { $ne: 'admin' } },
+    { numberpass: 0, payments: 0 } // Exclude 'numberpass' and 'payments' fields
+  );
 
-  res.json(users);
+  // Calculate Paid Interest from loans that are marked as paid
+  let totalActiveLoans = 0;
+  let totalClosedLoans = 0;
+  let totalPaidInterest = 0;
+  let totalActiveLoanAmount = 0;
+
+  users.forEach(user => {
+    if (user.loans && Array.isArray(user.loans)) {
+      user.loans.forEach(loan => {
+        if (loan.paid) {
+          // Closed/Paid loans
+          totalClosedLoans++;
+          const takenDate = new Date(loan.takenDate);
+          const paidDate = new Date(loan.paidDate);
+          const monthsDiff = (paidDate.getFullYear() - takenDate.getFullYear()) * 12 + (paidDate.getMonth() - takenDate.getMonth());
+          const interestAmount = loan.amount * 0.05 * (monthsDiff > 0 ? monthsDiff : 1); // Minimum 1 month if paid same month
+          totalPaidInterest += interestAmount;
+        } else {
+          // Active loans
+          totalActiveLoans++;
+          totalActiveLoanAmount += loan.amount;
+        }
+      });
+    }
+  });
+
+  // Remove loans from user objects before sending response
+  const usersWithoutLoans = users.map(user => {
+    const userObj = user.toObject();
+    delete userObj.loans;
+    return userObj;
+  });
+
+  res.json({
+    users: usersWithoutLoans,
+    loanSummary: {
+      totalActiveLoans,
+      totalActiveLoanAmount,
+      totalClosedLoans,
+      totalPaidInterest: Math.round(totalPaidInterest * 100) / 100 // Round to 2 decimal places
+    }
+  });
 });
+
 /**
  * @swagger
  * /api/users/{id}:
