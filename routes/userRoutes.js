@@ -182,7 +182,7 @@ router.post('/users', async (req, res) => {
 router.get('/users', async (req, res) => {
   const users = await User.find(
     { role: { $ne: 'admin' } },
-    { numberpass: 0 } // Exclude 'numberpass' and 'payments' fields
+    { numberpass: 0 ,payments: 0} // Exclude 'numberpass' and 'payments' fields
   );
 
   // Calculate Paid Interest from loans that are marked as paid
