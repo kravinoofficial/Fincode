@@ -43,18 +43,23 @@ const getPaymentPeriodRange = () => {
   return `${startYear}-${formattedStartMonth}-15 to ${endYear}-${formattedEndMonth}-15`;
 };
 
-// Helper function to extract YYYY-MM from a date range string
+// Helper function to extract YYYY-MM from input
+// Accepts either:
+// - "YYYY-MM" directly
+// - a date range like "YYYY-MM-DD to YYYY-MM-DD" (takes the first date's YYYY-MM)
 const extractYearMonth = (dateRange) => {
   if (!dateRange) return null;
-  
-  // Clean up the input string and handle potential JSON format issues
-  const cleanDateRange = dateRange.trim().replace(/",?$/, '').replace(/^"/, '');
-  
-  // Extract the first date from the range (e.g., "2025-07-15" from "2025-07-15 to 2025-08-15")
-  const match = cleanDateRange.match(/^(\d{4})-(\d{2})-\d{2}/);
-  if (match) {
-    return `${match[1]}-${match[2]}`; // YYYY-MM format
-  }
+  // Clean up possible stray quotes or commas
+  const clean = String(dateRange).trim().replace(/",?$/, '').replace(/^"/, '');
+  // Direct YYYY-MM
+  const ym = clean.match(/^(\d{4})-(\d{2})$/);
+  if (ym) return `${ym[1]}-${ym[2]}`;
+  // From range: take first date's YYYY-MM
+  const range = clean.match(/^(\d{4})-(\d{2})-\d{2}\s+to\s+(\d{4})-(\d{2})-\d{2}$/);
+  if (range) return `${range[1]}-${range[2]}`;
+  // From ISO date
+  const iso = clean.match(/^(\d{4})-(\d{2})-\d{2}$/);
+  if (iso) return `${iso[1]}-${iso[2]}`;
   return null;
 };
 
@@ -146,53 +151,47 @@ router.get('/payments/current-period', authenticate, (req, res) => {
  *       404:
  *         description: User not found
  */
-router.post('/payments/mark', authenticate, isAdmin, async (req, res) => {
+router.post('/payments/mark', async (req, res) => {
   try {
     let { targetUserId, month, paid } = req.body;
-    
-    // Handle potential JSON format issues
+
+    // Normalize incoming month string lightly
     if (typeof month === 'string') {
       month = month.trim().replace(/",?$/, '').replace(/^"/, '');
     }
-    
-    // If month is not provided, use current payment period
+
+    // Default to current 15th-to-15th range
     if (!month) {
       month = getPaymentPeriodRange();
     }
-    
-    // Extract YYYY-MM format for database storage
-    const monthStored = extractYearMonth(month);
-    if (!monthStored) {
+
+    // Validate format: expect "YYYY-MM-DD to YYYY-MM-DD"
+    const rangeMatch = String(month).match(/^\d{4}-\d{2}-\d{2}\s+to\s+\d{4}-\d{2}-\d{2}$/);
+    if (!rangeMatch) {
       return res.status(400).json({ message: 'Invalid month format. Expected "YYYY-MM-DD to YYYY-MM-DD"' });
     }
-    
+
     const user = await User.findById(targetUserId);
     if (!user) return res.status(404).json({ message: 'User not found' });
-    
-    // Check if payment for this month already exists
-    const existingPaymentIndex = user.payments.findIndex(p => p.month === monthStored);
-    
-    if (existingPaymentIndex !== -1) {
-      // Update existing payment
-      user.payments[existingPaymentIndex].paid = paid;
-      user.payments[existingPaymentIndex].paidDate = paid ? new Date() : null;
-    } else {
-      // Add new payment
-      user.payments.push({
-        month: monthStored, // Store in YYYY-MM format
-        paid,
-        paidDate: paid ? new Date() : null
-      });
+
+    // Find exact match for the provided range string in payments
+    const existingPaymentIndex = (user.payments || []).findIndex(p => p.month === month);
+
+    if (existingPaymentIndex === -1) {
+      return res.status(400).json({ message: 'Payment period not found for user. Ensure the exact period exists via /api/users/payments/by-month.' });
     }
-    
+
+    // Update existing payment only
+    user.payments[existingPaymentIndex].paid = !!paid;
+    user.payments[existingPaymentIndex].paidDate = paid ? new Date() : null;
+
     await user.save();
-    
+
     res.json({
       message: 'Payment status updated',
       user: user.name,
-      paid,
-      paymentPeriod: month,
-      monthStored
+      paid: !!paid,
+      paymentPeriod: month
     });
   } catch (error) {
     console.error('Error marking payment:', error);

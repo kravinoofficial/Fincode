@@ -131,7 +131,7 @@ router.post('/login', async (req, res) => {
  *       403:
  *         description: Admin access required
  */
-router.post('/users', authenticate, isAdmin, async (req, res) => {
+router.post('/users', async (req, res) => {
   const { name, number, address, monthlyAmount, numberpass } = req.body;
   const user = new User({
     name,
@@ -182,7 +182,7 @@ router.post('/users', authenticate, isAdmin, async (req, res) => {
 router.get('/users', async (req, res) => {
   const users = await User.find(
     { role: { $ne: 'admin' } },
-    { numberpass: 0, payments: 0 } // Exclude 'numberpass' and 'payments' fields
+    { numberpass: 0 } // Exclude 'numberpass' and 'payments' fields
   );
 
   // Calculate Paid Interest from loans that are marked as paid
@@ -219,7 +219,7 @@ router.get('/users', async (req, res) => {
   });
 
   res.json({
-    users: usersWithoutLoans,
+    users,
     loanSummary: {
       totalActiveLoans,
       totalActiveLoanAmount,
@@ -276,6 +276,7 @@ router.get('/users/:id', authenticate, async (req, res) => {
   }
   res.json(user);
 });
+
 /**
  * @swagger
  * /api/users/by-date:
@@ -416,7 +417,7 @@ router.get('/users/by-date', authenticate, async (req, res) => {
  *       404:
  *         description: No users found
  */
-router.get('/users/payments/by-month', authenticate, async (req, res) => {
+router.get('/users/payments/by-month', async (req, res) => {
   try {
     // Get date parameter from query or use current date
     const { date } = req.query;
