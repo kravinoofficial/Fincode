@@ -68,6 +68,7 @@ const mongoose = require('mongoose');
 router.post('/login', async (req, res) => {
   const { number, numberpass } = req.body;
   const user = await User.findOne({ number, numberpass });
+
   if (!user) {
     return res.status(401).json({ message: 'Invalid credentials' });
   }
@@ -78,6 +79,71 @@ router.post('/login', async (req, res) => {
   res.json({ token, userId: user._id, role: user.role, name: user.name });
 });
 
+
+
+/**
+ * @swagger
+ * /api/users/me:
+ *   post:
+ *     summary: Update the currently authenticated user's basic profile
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name:
+ *                 type: string
+ *               number:
+ *                 type: string
+ *               address:
+ *                 type: string
+ *               monthlyAmount:
+ *                 type: number
+ *               numberpass:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Profile updated successfully
+ *       400:
+ *         description: Invalid input
+ *       401:
+ *         description: Unauthorized
+ */
+router.post('/users/me', authenticate, async (req, res) => {
+  try {
+    const allowed = ['name', 'number', 'address', 'monthlyAmount', 'numberpass'];
+    const updates = {};
+    for (const key of allowed) {
+      if (Object.prototype.hasOwnProperty.call(req.body, key)) {
+        updates[key] = req.body[key];
+      }
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ message: 'No valid fields to update' });
+    }
+
+    const updated = await User.findByIdAndUpdate(
+      req.user._id,
+      { $set: updates },
+      { new: true, lean: true }
+    );
+
+    if (!updated) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    const { _id, name, number, address, monthlyAmount, role, numberpass } = updated;
+    return res.json({ _id, name, number, address, monthlyAmount, role, numberpass });
+  } catch (err) {
+    return res.status(500).json({ message: 'Server error' });
+  }
+});
 /**
  * @swagger
  * /api/users:
@@ -334,58 +400,13 @@ router.get('/users', async (req, res) => {
  */
 router.get('/users/me', authenticate, async (req, res) => {
   try {
-    const user = await User.findById(req.user._id, '-numberpass');
+    const user = await User.findById(req.user._id).lean();
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    const now = new Date();
-    const userObj = user.toObject ? user.toObject() : user;
-
-    let pendingLoanPrincipal = 0;
-    let currentinterestdue = 0;
-
-    if (Array.isArray(userObj.loans)) {
-      userObj.loans.forEach(loan => {
-        const isActive = loan && loan.paid !== true && loan.loanClosed !== true;
-        if (isActive) {
-          // Sum principal of active loans
-          pendingLoanPrincipal += Number(loan.amount || 0);
-
-          // Calculate current interest due using days since last payment (or takenDate)
-          const payments = Array.isArray(loan.interestPayments)
-            ? loan.interestPayments
-            : Array.isArray(loan.interestpayments)
-              ? loan.interestpayments
-              : [];
-
-          let interestStartDate;
-          if (payments.length === 0) {
-            interestStartDate = loan.takenDate ? new Date(loan.takenDate) : null;
-          } else {
-            const lastPayment = payments[payments.length - 1];
-            if (lastPayment && lastPayment.paidDate) {
-              interestStartDate = new Date(lastPayment.paidDate);
-              interestStartDate.setDate(interestStartDate.getDate() + 1);
-            }
-          }
-
-          if (interestStartDate && !isNaN(interestStartDate)) {
-            const daysDiff = Math.ceil((now - interestStartDate) / (1000 * 60 * 60 * 24));
-            if (daysDiff > 0) {
-              const dailyInterestRate = Number(loan.interestRate || 5) / 30 / 100;
-              currentinterestdue += Number(((Number(loan.amount || 0) * dailyInterestRate) * daysDiff).toFixed(2));
-            }
-          }
-        }
-      });
-    }
-
-    userObj.pendingLoanPrincipal = Math.round(pendingLoanPrincipal * 100) / 100;
-    userObj.currentinterestdue = Math.round(currentinterestdue * 100) / 100;
-    userObj.pendingLoanTotal = Math.round((pendingLoanPrincipal + currentinterestdue) * 100) / 100;
-
-    return res.json(userObj);
+    const { _id, name, number, address, monthlyAmount, role, numberpass } = user;
+    return res.json({ _id, name, number, address, monthlyAmount, role, numberpass });
   } catch (err) {
     return res.status(500).json({ message: 'Server error' });
   }
