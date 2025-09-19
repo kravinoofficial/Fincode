@@ -146,8 +146,9 @@ router.post('/loans/mark', authenticate, isAdmin, async (req, res) => {
   
   // Check if there is any unpaid interest
   if (currentInterestDue > 0) {
-    return res.status(400).json({ 
+    return res.status(200).json({ 
       message: 'Cannot mark loan as paid when there is unpaid interest', 
+      operation: 0,
       currentInterestDue,
       suggestion: 'Pay interest first using /loans/pay-interest endpoint'
     });
@@ -165,7 +166,7 @@ router.post('/loans/mark', authenticate, isAdmin, async (req, res) => {
   loan.closedDate = today;
 
   await user.save();
-  res.json({ message: 'Loan principal marked as paid' });
+  res.json({ message: 'Loan principal marked as paid' ,      operation: 1  });
 });
 
 /**
