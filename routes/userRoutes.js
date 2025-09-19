@@ -4,6 +4,7 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const { authenticate, isAdmin } = require('../utils/auth');
 const { getCurrentMonth } = require('../utils/helpers');
+const mongoose = require('mongoose');
 
 /**
  * @swagger
@@ -176,55 +177,120 @@ router.post('/users', async (req, res) => {
  *                     type: number
  *                   role:
  *                     type: string
+  *                   pendingLoanPrincipal:
+  *                     type: number
+  *                     description: Sum of principal for all active (unpaid) loans
+  *                   currentinterestdue:
+  *                     type: number
+  *                     description: Sum of current unpaid interest across active loans (from interestPayments.currentinterestdue)
+  *                   pendingLoanTotal:
+  *                     type: number
+  *                     description: pendingLoanPrincipal + currentinterestdue
  *       401:
  *         description: Unauthorized
  */
 router.get('/users', async (req, res) => {
   const users = await User.find(
     { role: { $ne: 'admin' } },
-    { numberpass: 0 ,payments: 0} // Exclude 'numberpass' and 'payments' fields
+    { numberpass: 0, payments: 0 } // Exclude 'numberpass' and 'payments' fields
   );
+  const now = new Date();
 
-  // Calculate Paid Interest from loans that are marked as paid
+  // Enrich each user with pending loan totals
+  const usersWithSummary = users.map(u => {
+    const userObj = u.toObject ? u.toObject() : u;
+    let pendingLoanPrincipal = 0;
+    let currentinterestdue = 0;
+
+    if (Array.isArray(userObj.loans)) {
+      userObj.loans.forEach(loan => {
+        const isActive = loan && loan.paid !== true && loan.loanClosed !== true;
+        if (isActive) {
+          // Sum principal of active loans
+          pendingLoanPrincipal += Number(loan.amount || 0);
+
+          // Calculate current interest due using days since last payment (or takenDate)
+          const payments = Array.isArray(loan.interestPayments)
+            ? loan.interestPayments
+            : Array.isArray(loan.interestpayments)
+              ? loan.interestpayments
+              : [];
+
+          let interestStartDate;
+          if (payments.length === 0) {
+            interestStartDate = loan.takenDate ? new Date(loan.takenDate) : null;
+          } else {
+            const lastPayment = payments[payments.length - 1];
+            if (lastPayment && lastPayment.paidDate) {
+              interestStartDate = new Date(lastPayment.paidDate);
+              interestStartDate.setDate(interestStartDate.getDate() + 1);
+            }
+          }
+
+          if (interestStartDate && !isNaN(interestStartDate)) {
+            const daysDiff = Math.ceil((now - interestStartDate) / (1000 * 60 * 60 * 24));
+            if (daysDiff > 0) {
+              const dailyInterestRate = Number(loan.interestRate || 5) / 30 / 100;
+              currentinterestdue += Number(((Number(loan.amount || 0) * dailyInterestRate) * daysDiff).toFixed(2));
+            }
+          }
+        }
+      });
+    }
+
+    userObj.pendingLoanPrincipal = Math.round(pendingLoanPrincipal * 100) / 100;
+    userObj.currentinterestdue = Math.round(currentinterestdue * 100) / 100;
+    userObj.pendingLoanTotal = Math.round((pendingLoanPrincipal + currentinterestdue) * 100) / 100;
+    return userObj;
+  });
+
+  // Aggregate high-level loan summary across users
   let totalActiveLoans = 0;
   let totalClosedLoans = 0;
   let totalPaidInterest = 0;
   let totalActiveLoanAmount = 0;
 
   users.forEach(user => {
-    if (user.loans && Array.isArray(user.loans)) {
+    if (Array.isArray(user.loans)) {
       user.loans.forEach(loan => {
-        if (loan.paid) {
-          // Closed/Paid loans
+        if (loan?.paid) {
           totalClosedLoans++;
-          const takenDate = new Date(loan.takenDate);
-          const paidDate = new Date(loan.paidDate);
-          const monthsDiff = (paidDate.getFullYear() - takenDate.getFullYear()) * 12 + (paidDate.getMonth() - takenDate.getMonth());
-          const interestAmount = loan.amount * 0.05 * (monthsDiff > 0 ? monthsDiff : 1); // Minimum 1 month if paid same month
-          totalPaidInterest += interestAmount;
+          const takenDate = loan.takenDate ? new Date(loan.takenDate) : null;
+          const paidDate = loan.paidDate ? new Date(loan.paidDate) : null;
+          if (takenDate && paidDate && !isNaN(takenDate) && !isNaN(paidDate)) {
+            const monthsDiff = (paidDate.getFullYear() - takenDate.getFullYear()) * 12 + (paidDate.getMonth() - takenDate.getMonth());
+            const interestAmount = Number(loan.amount || 0) * 0.05 * (monthsDiff > 0 ? monthsDiff : 1);
+            totalPaidInterest += interestAmount;
+          }
         } else {
-          // Active loans
           totalActiveLoans++;
-          totalActiveLoanAmount += loan.amount;
+          totalActiveLoanAmount += Number(loan?.amount || 0);
         }
       });
     }
   });
 
+  const peruserpendinginterest = usersWithSummary.map(user => ({
+    name: user.name,
+    currentinterestdue: user.currentinterestdue
+  }));
+
   // Remove loans from user objects before sending response
-  const usersWithoutLoans = users.map(user => {
-    const userObj = user.toObject();
+  const usersWithoutLoans = usersWithSummary.map(user => {
+    const userObj = { ...user };
     delete userObj.loans;
     return userObj;
   });
 
   res.json({
-    users,
+    users: usersWithSummary,
+    peruserpendinginterest,
+    usersWithoutLoans,
     loanSummary: {
       totalActiveLoans,
       totalActiveLoanAmount,
       totalClosedLoans,
-      totalPaidInterest: Math.round(totalPaidInterest * 100) / 100 // Round to 2 decimal places
+      totalPaidInterest: Math.round(totalPaidInterest * 100) / 100
     }
   });
 });
