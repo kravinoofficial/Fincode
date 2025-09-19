@@ -117,6 +117,93 @@ router.delete('/admin/delete-all-data', async (req, res) => {
  *                         type: string
  *                       count:
  *                         type: number
+ *                       sizeBytes:
+ *                         type: number
+ *                       storageSizeBytes:
+ *                         type: number
+ *                       totalIndexSizeBytes:
+ *                         type: number
+ *                 totalCollections:
+ *                   type: number
+ *                 storage:
+ *                   type: object
+ *                   properties:
+ *                     fsTotalSize:
+ *                       type: number
+ *                       description: Total filesystem size in MB for the MongoDB data path
+ *                     fsUsedSize:
+ *                       type: number
+ *                       description: Used filesystem size in MB for the MongoDB data path
+ *                     fsAvailableSize:
+ *                       type: number
+ *                       description: Available filesystem size in MB (fsTotalSize - fsUsedSize)
+ *                     dataSize:
+ *                       type: number
+ *                       description: Uncompressed data size in MB
+ *                     storageSize:
+ *                       type: number
+ *                       description: Allocated storage size in MB (includes padding/overhead)
+ *                     indexSize:
+ *                       type: number
+ *                       description: Total index size in MB
+ *                     wiredTigerCache:
+ *                       type: object
+ *                       properties:
+ *                         maxBytes:
+ *                           type: number
+ *                         usedBytes:
+ *                           type: number
+ *                         usedPercent:
+ *                           type: number
+ *                 load:
+ *                   type: object
+ *                   properties:
+ *                     connections:
+ *                       type: object
+ *                       properties:
+ *                         current:
+ *                           type: number
+ *                         available:
+ *                           type: number
+ *                         totalCreated:
+ *                           type: number
+ *                     networkMB:
+ *                       type: object
+ *                       properties:
+ *                         bytesInMB:
+ *                           type: number
+ *                         bytesOutMB:
+ *                           type: number
+ *                         numRequests:
+ *                           type: number
+ *                     opcounters:
+ *                       type: object
+ *                       additionalProperties:
+ *                         type: number
+ *                     memoryMB:
+ *                       type: object
+ *                       properties:
+ *                         residentMB:
+ *                           type: number
+ *                         virtualMB:
+ *                           type: number
+ *                 dbStatsMB:
+ *                   type: object
+ *                   properties:
+ *                     dbName:
+ *                       type: string
+ *                     collections:
+ *                       type: number
+ *                     objects:
+ *                       type: number
+ *                     dataSizeMB:
+ *                       type: number
+ *                     storageSizeMB:
+ *                       type: number
+ *                     indexSizeMB:
+ *                       type: number
+ *                     avgObjSizeMB:
+ *                       type: number
  */
 router.get('/admin/database-info', async (req, res) => {
   try {
@@ -124,17 +211,105 @@ router.get('/admin/database-info', async (req, res) => {
     const collectionInfo = [];
     
     for (const collection of collections) {
-      const count = await mongoose.connection.db.collection(collection.name).countDocuments();
+      const coll = mongoose.connection.db.collection(collection.name);
+      const count = await coll.countDocuments();
+      let stats = {};
+      try {
+        stats = await coll.stats();
+      } catch (_) {
+        stats = {};
+      }
+      const sizeBytes = Number(stats.size || 0);
+      const storageSizeBytes = Number(stats.storageSize || 0);
+      const totalIndexSizeBytes = typeof stats.totalIndexSize === 'number'
+        ? Number(stats.totalIndexSize)
+        : (stats.indexSizes ? Object.values(stats.indexSizes).reduce((a, b) => a + Number(b || 0), 0) : 0);
+
       collectionInfo.push({
         name: collection.name,
-        count: count
+        count,
+        sizeBytes,
+        storageSizeBytes,
+        totalIndexSizeBytes
       });
     }
-    
+    // Gather database statistics
+    let dbStats = {};
+    let storage = {};
+    let load = {};
+    const toMB = v => Math.round((Number(v || 0) / (1024 * 1024)) * 100) / 100;
+    try {
+      dbStats = await mongoose.connection.db.stats();
+      // Basic storage stats from db.stats()
+      const fsTotalSize = Number(dbStats.fsTotalSize || 0);
+      const fsUsedSize = Number(dbStats.fsUsedSize || 0);
+      const fsAvailableSize = fsTotalSize && fsUsedSize ? (fsTotalSize - fsUsedSize) : undefined;
+
+      storage = {
+        fsTotalSize: toMB(fsTotalSize),
+        fsUsedSize: toMB(fsUsedSize),
+        fsAvailableSize: typeof fsAvailableSize === 'number' ? toMB(fsAvailableSize) : null,
+        dataSize: toMB(dbStats.dataSize || 0),
+        storageSize: toMB(dbStats.storageSize || 0),
+        indexSize: toMB(dbStats.indexSize || 0)
+      };
+
+      // Try to include WiredTiger cache usage if available
+      try {
+        const serverStatus = await mongoose.connection.db.admin().serverStatus();
+        const wt = serverStatus.wiredTiger?.cache;
+        if (wt) {
+          const maxBytes = Number(wt['maximum bytes configured'] || 0);
+          const usedBytes = Number(wt['bytes currently in the cache'] || 0);
+          storage.wiredTigerCache = {
+            maxBytes: toMB(maxBytes),
+            usedBytes: toMB(usedBytes),
+            usedPercent: maxBytes > 0 ? Math.round((usedBytes / maxBytes) * 10000) / 100 : null
+          };
+        }
+
+        // Load metrics
+        load = {
+          connections: {
+            current: serverStatus.connections?.current ?? null,
+            available: serverStatus.connections?.available ?? null,
+            totalCreated: serverStatus.connections?.totalCreated ?? null
+          },
+          networkMB: {
+            bytesInMB: toMB(serverStatus.network?.bytesIn || 0),
+            bytesOutMB: toMB(serverStatus.network?.bytesOut || 0),
+            numRequests: serverStatus.network?.numRequests ?? null
+          },
+          opcounters: serverStatus.opcounters || {},
+          memoryMB: {
+            residentMB: serverStatus.mem ? Number(serverStatus.mem.resident) : null,
+            virtualMB: serverStatus.mem ? Number(serverStatus.mem.virtual) : null
+          }
+        };
+      } catch (_) {
+        // serverStatus not available or different storage engine; ignore
+      }
+    } catch (_) {
+      // db.stats() failed (permissions or env), leave storage blank
+    }
+
+    const dbStatsMB = dbStats && dbStats.db ? {
+      dbName: dbStats.db,
+      collections: dbStats.collections,
+      objects: dbStats.objects,
+      dataSizeMB: toMB(dbStats.dataSize || 0),
+      storageSizeMB: toMB(dbStats.storageSize || 0),
+      indexSizeMB: toMB(dbStats.indexSize || 0),
+      avgObjSizeMB: toMB(dbStats.avgObjSize || 0)
+    } : {};
+
     res.json({
       success: true,
       collections: collectionInfo,
-      totalCollections: collections.length
+      totalCollections: collections.length,
+      storage,
+      load,
+      dbStatsMB
     });
     
   } catch (error) {
