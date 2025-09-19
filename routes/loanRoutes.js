@@ -116,6 +116,10 @@ router.post('/loans/mark', authenticate, isAdmin, async (req, res) => {
   if (!paid) {
     return res.status(400).json({ message: 'Cannot mark a loan as unpaid once paid' });
   }
+  // Prevent double-paying
+  if (loan.paid) {
+    return res.status(400).json({ message: 'Loan is already marked as paid' });
+  }
   
   // Calculate current interest due before marking as paid
   const today = new Date();
@@ -150,7 +154,7 @@ router.post('/loans/mark', authenticate, isAdmin, async (req, res) => {
   }
   
   loan.paid = true;
-  loan.paidDate = now;
+  loan.paidDate = today;
   
   // Check if all interest is paid up to date
   const lastInterestPayment = loan.interestPayments.length > 0 ? 
