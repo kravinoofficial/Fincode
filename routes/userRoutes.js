@@ -241,6 +241,7 @@ router.get('/users', async (req, res) => {
     userObj.pendingLoanPrincipal = Math.round(pendingLoanPrincipal * 100) / 100;
     userObj.currentinterestdue = Math.round(currentinterestdue * 100) / 100;
     userObj.pendingLoanTotal = Math.round((pendingLoanPrincipal + currentinterestdue) * 100) / 100;
+  
     return userObj;
   });
 
@@ -270,10 +271,7 @@ router.get('/users', async (req, res) => {
     }
   });
 
-  const peruserpendinginterest = usersWithSummary.map(user => ({
-    name: user.name,
-    currentinterestdue: user.currentinterestdue
-  }));
+  // peruserpendinginterest is now embedded within each user in usersWithSummary
 
   // Remove loans from user objects before sending response
   const usersWithoutLoans = usersWithSummary.map(user => {
@@ -284,7 +282,6 @@ router.get('/users', async (req, res) => {
 
   res.json({
     users: usersWithSummary,
-    peruserpendinginterest,
     usersWithoutLoans,
     loanSummary: {
       totalActiveLoans,
