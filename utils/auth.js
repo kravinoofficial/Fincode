@@ -2,7 +2,23 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 
 async function authenticate(req, res, next) {
-  const token = req.headers.authorization?.split(' ')[1];
+  // Accept token from various locations for flexibility
+  let token = null;
+  const authHeader = req.headers.authorization || req.headers.Authorization;
+
+  if (authHeader) {
+    // Support both 'Bearer <token>' and raw '<token>' formats
+    if (authHeader.startsWith('Bearer ')) {
+      token = authHeader.substring(7).trim();
+    } else {
+      token = authHeader.trim();
+    }
+  }
+
+  if (!token) {
+    token = req.headers['x-access-token'] || req.query.token || req.body?.token;
+  }
+
   if (!token) {
     return res.status(401).json({ message: 'No token provided' });
   }

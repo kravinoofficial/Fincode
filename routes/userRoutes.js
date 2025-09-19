@@ -294,6 +294,105 @@ router.get('/users', async (req, res) => {
 
 /**
  * @swagger
+ * /api/users/me:
+ *   get:
+ *     summary: Get the currently authenticated user's details with loan summary
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Current user details
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 _id:
+ *                   type: string
+ *                 name:
+ *                   type: string
+ *                 number:
+ *                   type: string
+ *                 address:
+ *                   type: string
+ *                 monthlyAmount:
+ *                   type: number
+ *                 role:
+ *                   type: string
+ *                 pendingLoanPrincipal:
+ *                   type: number
+ *                   description: Sum of principal for all active (unpaid) loans
+ *                 currentinterestdue:
+ *                   type: number
+ *                   description: Sum of current unpaid interest across active loans
+ *                 pendingLoanTotal:
+ *                   type: number
+ *                   description: pendingLoanPrincipal + currentinterestdue
+ *       401:
+ *         description: Unauthorized
+ */
+router.get('/users/me', authenticate, async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id, '-numberpass');
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    const now = new Date();
+    const userObj = user.toObject ? user.toObject() : user;
+
+    let pendingLoanPrincipal = 0;
+    let currentinterestdue = 0;
+
+    if (Array.isArray(userObj.loans)) {
+      userObj.loans.forEach(loan => {
+        const isActive = loan && loan.paid !== true && loan.loanClosed !== true;
+        if (isActive) {
+          // Sum principal of active loans
+          pendingLoanPrincipal += Number(loan.amount || 0);
+
+          // Calculate current interest due using days since last payment (or takenDate)
+          const payments = Array.isArray(loan.interestPayments)
+            ? loan.interestPayments
+            : Array.isArray(loan.interestpayments)
+              ? loan.interestpayments
+              : [];
+
+          let interestStartDate;
+          if (payments.length === 0) {
+            interestStartDate = loan.takenDate ? new Date(loan.takenDate) : null;
+          } else {
+            const lastPayment = payments[payments.length - 1];
+            if (lastPayment && lastPayment.paidDate) {
+              interestStartDate = new Date(lastPayment.paidDate);
+              interestStartDate.setDate(interestStartDate.getDate() + 1);
+            }
+          }
+
+          if (interestStartDate && !isNaN(interestStartDate)) {
+            const daysDiff = Math.ceil((now - interestStartDate) / (1000 * 60 * 60 * 24));
+            if (daysDiff > 0) {
+              const dailyInterestRate = Number(loan.interestRate || 5) / 30 / 100;
+              currentinterestdue += Number(((Number(loan.amount || 0) * dailyInterestRate) * daysDiff).toFixed(2));
+            }
+          }
+        }
+      });
+    }
+
+    userObj.pendingLoanPrincipal = Math.round(pendingLoanPrincipal * 100) / 100;
+    userObj.currentinterestdue = Math.round(currentinterestdue * 100) / 100;
+    userObj.pendingLoanTotal = Math.round((pendingLoanPrincipal + currentinterestdue) * 100) / 100;
+
+    return res.json(userObj);
+  } catch (err) {
+    return res.status(500).json({ message: 'Server error' });
+  }
+});
+
+/**
+ * @swagger
  * /api/users/{id}:
  *   get:
  *     summary: Get a user by ID
@@ -553,5 +652,6 @@ router.get('/users/payments/by-month', async (req, res) => {
     res.status(500).json({ message: 'Server error' });
   }
 });
+
 
 module.exports = router;
