@@ -52,35 +52,35 @@ function getPaymentPeriod() {
 }
 
 /**
- * Get the date range for payment period based on 15th to 15th rule
- * Returns range from previous month's 15th to current month's 15th
+ * Get the date range for payment period based on 15th-to-15th rule
+ * Returns range from 15th of one month to 15th of next (or current) month
+ * @param {(Date|string)} [inputDate=new Date()]
  * @returns {string} Date range string
  */
-function getPaymentPeriodRange() {
-  const date = new Date();
-  const currentDate = date.getDate();
-  let year = date.getFullYear();
-  let month = date.getMonth() + 1; // JavaScript months are 0-indexed
-  
-  // Calculate previous month for the range start
-  let prevMonth = month === 1 ? 12 : month - 1;
-  let prevYear = month === 1 ? year - 1 : year;
-  
-  // If date is between 1st and 14th, adjust current month/year to previous month
-  if (currentDate < 15) {
-    if (month === 1) {
-      month = 12;
-      year--;
-    } else {
-      month--;
-    }
-    
-    // Recalculate previous month for range start
+function getPaymentPeriodRange(inputDate = new Date()) {
+  const d = (inputDate instanceof Date) ? inputDate : new Date(inputDate);
+  if (isNaN(d)) throw new Error("Invalid date");
+
+  const day = d.getDate();
+  let year = d.getFullYear();
+  let month = d.getMonth() + 1; // 1..12 instead of 0..11
+
+  let prevMonth, prevYear;
+
+  if (day < 15) {
+    // Start = previous month, End = current month
     prevMonth = month === 1 ? 12 : month - 1;
     prevYear = month === 1 ? year - 1 : year;
+  } else {
+    // Start = current month, End = next month
+    prevMonth = month;
+    prevYear = year;
+    month = month === 12 ? 1 : month + 1;
+    year = month === 1 ? year + 1 : year;
   }
-  
-  return `${prevYear}-${String(prevMonth).padStart(2, '0')}-15 to ${year}-${String(month).padStart(2, '0')}-15`;
+
+  return `${prevYear}-${String(prevMonth).padStart(2, "0")}-15 to ${year}-${String(month).padStart(2, "0")}-15`;
 }
+
 
 module.exports = { getCurrentMonth, getPaymentPeriod, getPaymentPeriodRange };
