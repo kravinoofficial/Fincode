@@ -385,31 +385,51 @@ router.post('/admin/seed-admin', async (req, res) => {
         }
       });
     } else {
-      console.log('⚠️  No admin user found, creating new admin...');
-      
-      // Create new admin user
-      const newAdmin = new User({
-        name: 'Admin',
-        number: '1234567890',
-        address: 'Admin Address',
-        monthlyAmount: 0,
-        role: 'admin',
-        numberpass: 'admin123',
-        payments: [],
-        loans: []
-      });
+      console.log('⚠️  No admin user found, creating new admin from request body...');
 
-      // Validate phone number format
-      if (!/^\d{10}$/.test(newAdmin.number)) {
+      const {
+        name,
+        number,
+        address,
+        monthlyAmount,
+        numberpass
+      } = req.body || {};
+
+      // Basic validations
+      if (!name || !number || !address || !numberpass) {
         return res.status(400).json({
           success: false,
-          message: 'Invalid phone number format for admin user',
+          message: 'Missing required fields. Required: name, number, address, numberpass',
           adminExists: false
         });
       }
 
+      // Validate phone number format (10 digits)
+      if (!/^\d{10}$/.test(String(number))) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid phone number format for admin user. It must be a 10-digit number string.',
+          adminExists: false
+        });
+      }
+
+      // Coerce monthlyAmount to a number, default to 0 if not provided or invalid
+      const monthlyAmountNum = Number.isFinite(Number(monthlyAmount)) ? Number(monthlyAmount) : 0;
+
+      // Create new admin user with provided values
+      const newAdmin = new User({
+        name: String(name).trim(),
+        number: String(number).trim(),
+        address: String(address).trim(),
+        monthlyAmount: monthlyAmountNum,
+        role: 'admin',
+        numberpass: String(numberpass),
+        payments: [],
+        loans: []
+      });
+
       await newAdmin.save();
-      console.log('✅ New admin user created successfully');
+      console.log('✅ New admin user created successfully:', newAdmin.name);
 
       res.json({
         success: true,
